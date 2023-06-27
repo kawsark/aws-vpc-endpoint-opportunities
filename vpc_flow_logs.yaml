@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creates a VPC Flow log for the VPC using CloudWatch Logs destination"
+Parameters:
+  VPCID:
+    Type: String
+    Description: "VPC ID to deploy this VPC Endpoint into"
+
+Resources:
+  # CloudWatch Logs group for VPC Flow Logs
+  VPCFLowLogsLogGroup: 
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+
+  VPCFlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      Description: 'IAM role for publishing flow logs to CloudWatch Logs'
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - vpc-flow-logs.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: flowlogs
+                Effect: Allow
+                Action: 
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: 
+                  - !GetAtt VPCFLowLogsLogGroup.Arn
+
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties: 
+      DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
+      LogDestination: !GetAtt VPCFLowLogsLogGroup.Arn
+      LogDestinationType: cloud-watch-logs
+      ResourceId: !Ref VPCID
+      ResourceType: VPC
+      TrafficType: ALL

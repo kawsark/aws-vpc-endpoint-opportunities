@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creates Route 53 Resolver query configuration for an existing VPC and lambda function to query CloudWatch Logs Insight"
+Parameters:
+  VPCID:
+    Description: The ID an existing VPC
+    Type: String
+  
+  Route53QueryString: 
+    Description: CloudWatch Logs Query String to query Route53 Logs
+    Type: String
+    Default: "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' stats count () as queryCount by query_name sort queryCount desc limit 20"
+  
+  VPCFlowLogsQueryString: 
+    Description: CloudWatch Logs Query String to query VPC Flow Logs
+    Type: String
+    Default: "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' stats count () as queryCount by query_name sort queryCount desc limit 20"
+  
+#1. VPC
+Resources:
+ 
+  # CloudWatch Logs group for VPC Flow Logs
+  VPCFLowLogsLogGroup: 
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+
+  VPCFlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      Description: 'IAM role for publishing flow logs to CloudWatch Logs'
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - vpc-flow-logs.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: flowlogs
+                Effect: Allow
+                Action: 
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: 
+                  - !GetAtt VPCFLowLogsLogGroup.Arn
+
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties: 
+      DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
+      LogDestination: !GetAtt VPCFLowLogsLogGroup.Arn
+      LogDestinationType: cloud-watch-logs
+      ResourceId: !Ref VPC
+      ResourceType: VPC
+      Tags: 
+        - Key : Environment
+          Value : Dev
+      TrafficType: ALL
+  
+  # CloudWatch Logs group for Route 53 Query Logs
+  Route53QueryLogGroup: 
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      RetentionInDays: 7
+
+  Route53QueryLoggingConfig:
+    Type: "AWS::Route53Resolver::ResolverQueryLoggingConfig"
+    Properties:
+      DestinationArn: !GetAtt Route53QueryLogGroup.Arn
+
+  Route53QueryLoggingConfigAssociation:
+    Type: "AWS::Route53Resolver::ResolverQueryLoggingConfigAssociation"
+    Properties:
+      ResolverQueryLogConfigId: !GetAtt Route53QueryLoggingConfig.Id
+      ResourceId: !Ref VPC
+
+  # Lambda function to query CloudWatch Logs Insight
+  CWLogsQueryLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: CWLogsQueryLambdaExistingVPC
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import time
+
+          # Function to query CloudWatch Logs Insights for DNS resolutions
+          def query_dns_answers(query_name, client, log_group_name, startTime, endTime):
+              route53_answers = []
+
+              query_string = 'fields @message | filter query_name == \''+ query_name + '\' | filter query_type == "A" | limit 1'
+
+              response = client.start_query(
+                  logGroupName=log_group_name,
+                  queryString=query_string,
+                  startTime=startTime,
+                  endTime=endTime,
+                  limit=5
+              )
+              query_id = response['queryId']
+              print("INFO: Query started with ID " + query_id + ", DNS name: " + query_name, ", Query string: " + query_string)
+              time.sleep(5)
+              
+              response = client.get_query_results(
+                queryId=query_id
+              )
+              
+              print(response)
+              
+              # If there is a result, then extract the DNS resolution data from it
+              if len(response['results'][0]) > 0:
+                  message = response['results'][0][0]['value']
+                  
+                  # Extract the Rdata from message
+                  if "answers" in message:
+                      message_dict = eval(message)
+                      for a in message_dict["answers"]:
+                          route53_answers.append(a["Rdata"])
+              
+              return route53_answers
+
+
+          def lambda_handler(event, context):
+              # Get environment variables
+              log_group_name = os.environ.get('ROUTE53_LOG_GROUP_NAME')
+              #query_string = os.environ.get('ROUTE53_QUERY_STRING')
+              query_string = "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' | stats count () as queryCount by query_name | sort queryCount desc | limit 20"
+
+              route53_query_name_resolutions = {} # List to hold query names and resolution arrays
+              start_time=int(time.time()) - 604800 # One week ago
+              end_time=int(time.time()) # Current time
+
+              # Create CloudWatch Logs Insights query
+              client = boto3.client('logs')
+              response = client.start_query(
+                  logGroupName=log_group_name,
+                  queryString=query_string,
+                  startTime=start_time, # One week ago
+                  endTime=end_time,
+                  limit=20
+              )
+              query_id = response['queryId']
+
+              print("INFO: Query started with ID " + query_id + ", Query string: " + query_string)
+              
+              time.sleep(10)
+              
+              response = client.get_query_results(
+                  queryId=query_id
+              )
+
+              print("INFO: Response " + str(response))
+
+              # Loop through results and add to list
+              for result in response["results"]:
+                  query_name = result[0]['value']
+                  route53_query_name_resolutions[query_name] = query_dns_answers(query_name, client, log_group_name, start_time, end_time)
+              
+              print("INFO: Route53 answers: " + str(route53_query_name_resolutions))
+
+              # return the full response dict
+              return route53_query_name_resolutions
+    
+
+      Environment:
+        Variables:
+          ROUTE53_LOG_GROUP_NAME: !Ref Route53QueryLogGroup
+          ROUTE53_QUERY_STRING: !Ref Route53QueryString
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-log-groups
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: queryflowlogs
+                Effect: Allow
+                Action: 
+                  - 'logs:*'
+                Resource:
+                  - !GetAtt Route53QueryLogGroup.Arn
+                  - !GetAtt VPCFLowLogsLogGroup.Arn
+              - Sid: getqueryresults
+                Effect: Allow
+                Action: 
+                  - 'logs:GetQueryResults'
+                Resource: '*'
+
+Outputs:
+
+  VPCId:
+    Description: "VPCId of VPC"
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::Region}-${AWS::StackName}-VPCId"
