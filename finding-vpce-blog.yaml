@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Creates a VPC with Managed NAT, similar to the VPC Wizard at https://console.aws.amazon.com/vpc/home#wizardFullpagePublicAndPrivate: (extended from VPC_with_PublicIPs_And_DNS.template sample)"
+Description: "Creates a VPC with Managed NAT, 2 Public and 2 Private Subnets. Also creates the finding VPC Endpoint opportunities solution"
 Parameters:
   VPCName:
     Description: The name of the VPC being created.
     Type: String
-    Default: "VPC Public and Private with NAT"
+    Default: "VPC Public and Private subnets with with NAT Gateway"
 
   EC2InstanceType:
     Description: EC2 instance type on which IDE runs
