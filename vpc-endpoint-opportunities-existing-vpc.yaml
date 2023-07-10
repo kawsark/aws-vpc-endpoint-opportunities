@@ -10,11 +10,6 @@ Parameters:
     Type: String
     Default: "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' stats count () as queryCount by query_name sort queryCount desc limit 20"
   
-  VPCFlowLogsQueryString: 
-    Description: CloudWatch Logs Query String to query VPC Flow Logs
-    Type: String
-    Default: "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' stats count () as queryCount by query_name sort queryCount desc limit 20"
-  
 #1. VPC
 Resources:
  
@@ -60,7 +55,7 @@ Resources:
       DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
       LogDestination: !GetAtt VPCFLowLogsLogGroup.Arn
       LogDestinationType: cloud-watch-logs
-      ResourceId: !Ref VPC
+      ResourceId: !Ref VPCID
       ResourceType: VPC
       Tags: 
         - Key : Environment
@@ -82,7 +77,7 @@ Resources:
     Type: "AWS::Route53Resolver::ResolverQueryLoggingConfigAssociation"
     Properties:
       ResolverQueryLogConfigId: !GetAtt Route53QueryLoggingConfig.Id
-      ResourceId: !Ref VPC
+      ResourceId: !Ref VPCID
 
   # Lambda function to query CloudWatch Logs Insight
   CWLogsQueryLambda:
@@ -218,6 +213,6 @@ Outputs:
 
   VPCId:
     Description: "VPCId of VPC"
-    Value: !Ref VPC
+    Value: !Ref VPCID
     Export:
       Name: !Sub "${AWS::Region}-${AWS::StackName}-VPCId"
