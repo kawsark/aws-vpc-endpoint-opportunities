@@ -11,57 +11,7 @@ Parameters:
     Default: "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' stats count () as queryCount by query_name sort queryCount desc limit 20"
   
 #1. VPC
-Resources:
- 
-  # CloudWatch Logs group for VPC Flow Logs
-  VPCFLowLogsLogGroup: 
-    Type: AWS::Logs::LogGroup
-    Properties: 
-      RetentionInDays: 7
-
-  VPCFlowLogsRole:
-    Type: AWS::IAM::Role
-    Properties: 
-      Description: 'IAM role for publishing flow logs to CloudWatch Logs'
-      Path: /
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-              - vpc-flow-logs.amazonaws.com
-            Action:
-              - 'sts:AssumeRole'
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Sid: flowlogs
-                Effect: Allow
-                Action: 
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - logs:DescribeLogGroups
-                  - logs:DescribeLogStreams
-                Resource: 
-                  - !GetAtt VPCFLowLogsLogGroup.Arn
-
-  VPCFlowLog:
-    Type: AWS::EC2::FlowLog
-    Properties: 
-      DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
-      LogDestination: !GetAtt VPCFLowLogsLogGroup.Arn
-      LogDestinationType: cloud-watch-logs
-      ResourceId: !Ref VPCID
-      ResourceType: VPC
-      Tags: 
-        - Key : Environment
-          Value : Dev
-      TrafficType: ALL
-  
+Resources:  
   # CloudWatch Logs group for Route 53 Query Logs
   Route53QueryLogGroup: 
     Type: AWS::Logs::LogGroup
@@ -83,7 +33,7 @@ Resources:
   CWLogsQueryLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: CWLogsQueryLambdaExistingVPC
+      FunctionName: CWLogsQueryLambda
       Runtime: python3.9
       Handler: index.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -94,6 +44,38 @@ Resources:
           import boto3
           import os
           import time
+
+          # Get VPC ID from environment variable
+          vpc_id = os.environ["VPC_ID"]
+
+          # Get available VPC endpoint services
+          client = boto3.client("ec2")
+          available_services = []
+          try:
+              response = client.describe_vpc_endpoint_services()
+              available_services = response['ServiceNames']
+          except Exception as e:
+              print(e)
+              print("ERROR: cannot get available VPC endpoint services")
+              
+          # Get implemented VPC endpoint services
+          endpoints = []
+          try:
+              response = client.describe_vpc_endpoints()
+              endpoints = response['VpcEndpoints']
+          except Exception as e:
+              print(e)
+              print("ERROR: Cannot get VPC endpoints")
+
+          # function to check if vpc endpoint exists for given service name
+          def check_vpc_endpoint_exists(service_name):
+              print("INFO: checking " + vpc_id + " and " + service_name)
+              for endpoint in endpoints:
+                  if endpoint["VpcId"] == vpc_id and endpoint["ServiceName"] == service_name:
+                      return True
+              
+              return False
+                      
 
           # Function to query CloudWatch Logs Insights for DNS resolutions
           def query_dns_answers(query_name, client, log_group_name, startTime, endTime):
@@ -130,6 +112,13 @@ Resources:
               
               return route53_answers
 
+          # Function to reverse a query name
+          def reverse_query_name(query_name):
+              parts = query_name.split('.')
+              if parts[-1] == '':
+                  parts.pop()
+              parts.reverse()
+              return '.'.join(parts)
 
           def lambda_handler(event, context):
               # Get environment variables
@@ -165,16 +154,23 @@ Resources:
               # Loop through results and add to list
               for result in response["results"]:
                   query_name = result[0]['value']
-                  route53_query_name_resolutions[query_name] = query_dns_answers(query_name, client, log_group_name, start_time, end_time)
+                  query_count = result[1]['value']
+                  reverse_name = reverse_query_name(query_name)
+                  endpoint_supported = reverse_name in available_services
+                  endpoint_exists = check_vpc_endpoint_exists(reverse_name)
+                  
+                  route53_query_name_resolutions[query_name] = { "queryCount" : query_count , "endpoint_supported": endpoint_supported, "endpoint_exists": endpoint_exists, "answers" : query_dns_answers(query_name, client, log_group_name, start_time, end_time) }
               
               print("INFO: Route53 answers: " + str(route53_query_name_resolutions))
 
               # return the full response dict
               return route53_query_name_resolutions
+
     
 
       Environment:
         Variables:
+          VPC_ID: !Ref VPCID
           ROUTE53_LOG_GROUP_NAME: !Ref Route53QueryLogGroup
           ROUTE53_QUERY_STRING: !Ref Route53QueryString
 
@@ -196,18 +192,28 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: queryflowlogs
+              - Sid: queryFlowLogs
                 Effect: Allow
                 Action: 
                   - 'logs:*'
                 Resource:
                   - !GetAtt Route53QueryLogGroup.Arn
-                  - !GetAtt VPCFLowLogsLogGroup.Arn
-              - Sid: getqueryresults
+              - Sid: getQueryResults
                 Effect: Allow
                 Action: 
                   - 'logs:GetQueryResults'
                 Resource: '*'
+        - PolicyName: describe-vpc-endpoints
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: describeVPCEndpoints
+                Effect: Allow
+                Action: 
+                  - 'ec2:DescribeVpcEndpoints'
+                  - 'ec2:DescribeVpcEndpointServices'
+                Resource:
+                  - !GetAtt Route53QueryLogGroup.Arn
 
 Outputs:
 

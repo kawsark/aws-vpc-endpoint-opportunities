@@ -6,10 +6,39 @@ Parameters:
     Type: String
     Default: "VPC Public and Private subnets with with NAT Gateway"
 
+  EC2InstanceType:
+    Description: EC2 instance type on which IDE runs
+    Type:        String
+    Default:     m5.large
+  
   Route53QueryString: 
     Description: CloudWatch Logs Query String to query Route53 Logs
     Type: String
     Default: "fields @timestamp, query_name | filter query_name ~= 'amazonaws.com.' stats count () as queryCount by query_name sort queryCount desc limit 20"
+  
+  Env:
+    Description:    Please specify the target Env. Used for tagging and resource names. Mandatory LOWER CASE.
+    Type:           String
+    Default:        "poc"
+    AllowedValues:
+      - poc
+      - dev
+      - prod
+
+  User:
+    Description:    Please specify the User.
+    Type:           String
+    Default:        "test"
+
+  RepositoryName:
+    Description:    CodeCommit Repository Name
+    Type:           String
+    Default:        'CodeCommitRepoExample'
+
+  AMI:
+    Description:    The AMI for this machine
+    Type:           String
+    Default:        "amazonlinux-2-x86_64"
 
 Mappings:
   SubnetConfig:
@@ -415,6 +444,64 @@ Resources:
       ResolverQueryLogConfigId: !GetAtt Route53QueryLoggingConfig.Id
       ResourceId: !Ref VPC
 
+  # VPC Endpoint for CloudWatch Logs
+  cwlInterfaceEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      VpcId: !Ref VPC
+      SubnetIds: 
+        - !Ref PrivateSubnet0
+
+# 5. c9iam.yaml
+  AWSCloud9SSMAccessRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - cloud9.amazonaws.com
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: 'Service linked role for AWS Cloud9'
+      Path: '/service-role/'
+      ManagedPolicyArns: 
+#        - arn:aws:iam::aws:policy/AWSCloud9SSMInstanceProfile
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      RoleName: 'AWSCloud9SSMAccessRole'
+
+  AWSCloud9SSMInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      InstanceProfileName: AWSCloud9SSMInstanceProfile
+      Path: "/cloud9/"
+      Roles: 
+        - 
+          Ref: AWSCloud9SSMAccessRole
+
+# C9.yaml
+# Description: AWS Cloud9 Environment with AWS CodeCommit Repository
+
+  C9IDE0:
+    Type: 'AWS::Cloud9::EnvironmentEC2'
+    Properties:
+      Name: !Sub '${User}-${Env}-Cloud9-IDE0'
+      Description: !Sub '${User} Cloud9 IDE PrivateSubnet0'
+      AutomaticStopTimeMinutes: 30
+      ConnectionType: CONNECT_SSM
+      ImageId: !Sub ${AMI}
+      SubnetId: !Ref PrivateSubnet0
+      InstanceType: !Ref 'EC2InstanceType'
+      Repositories:
+          - RepositoryUrl: !Sub 'https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${RepositoryName}'
+            PathComponent: !Sub 'codecommit/${RepositoryName}'
+
   # Lambda function to query CloudWatch Logs Insight
   CWLogsQueryLambda:
     Type: AWS::Lambda::Function
@@ -650,3 +737,11 @@ Outputs:
   PublicRouteTable:
     Description: "PublicRouteTable Id"
     Value: !GetAtt PublicRouteTable.RouteTableId
+
+  Cloud9URL0:
+    Description: Cloud9 Environment
+    Value:
+      Fn::Join:
+      - ''
+      - - !Sub https://${AWS::Region}.console.aws.amazon.com/cloud9/ide/
+        - !Ref 'C9IDE0'

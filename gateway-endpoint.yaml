@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "Creates an Gatewaty VPC Endpoint in an existing VPC."
 Parameters:
-  ServiceParam:
+  EndpointServiceName:
     Type: String
     Description: "Service name for this Gateway VPC endpoint. Use s3 or dynamodb."
     Default: "s3"
@@ -23,7 +23,7 @@ Resources:
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
       VpcEndpointType: Gateway
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.${ServiceParam}'
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.${EndpointServiceName}'
       VpcId: !Ref VPCID
       RouteTableIds: !Ref RouteTableIDs
 
@@ -31,4 +31,4 @@ Outputs:
   VPCEOutput:
     Value: !Ref GatewayVPCEndpoint
     Export:
-      Name: !Sub GatewayVPCEndpoint-${ServiceParam}
+      Name: !Sub GatewayVPCEndpoint-${EndpointServiceName}

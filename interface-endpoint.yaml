@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "Creates an Interface VPC Endpoint in an existing VPC."
 Parameters:
-  ServiceParam:
+  EndpointServiceName:
     Type: String
     Default: "ec2"
   VPCID:
@@ -10,10 +10,10 @@ Parameters:
   VPCSubnetIDs:
     Type: List<AWS::EC2::Subnet::Id>
     Description: "List of Subnet IDs where VPC Endpoint should be created"
-  VPCCIDRBlock:
+  IngressCIDRBlock:
     Type: String
     Default: "10.0.0.0/16"
-    Description: "VPC CIDR Block to allow ingress traffic to Security Group"
+    Description: "CIDR Block for Security Group to allow ingress traffic to VPC endpoint"
 
 Resources:
   VPCEndpointSecurityGroup:
@@ -27,7 +27,7 @@ Resources:
     Properties:
       VpcEndpointType: Interface
       PrivateDnsEnabled: True
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.${ServiceParam}'
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.${EndpointServiceName}'
       VpcId: !Ref VPCID
       SubnetIds: !Ref VPCSubnetIDs
       SecurityGroupIds:
@@ -37,7 +37,7 @@ Resources:
   IngressToVPCEndpoint:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      CidrIp: !Ref VPCCIDRBlock
+      CidrIp: !Ref IngressCIDRBlock
       Description: 'Allow-access-to-VPC-Endpoint'
       FromPort: 0
       ToPort: 65535
@@ -48,4 +48,4 @@ Outputs:
   VPCEndpoint:
     Value: !Ref VPCInterfaceEndpoint
     Export:
-      Name: !Sub VPCEndpoint-${ServiceParam}
+      Name: !Sub VPCEndpoint-${EndpointServiceName}
