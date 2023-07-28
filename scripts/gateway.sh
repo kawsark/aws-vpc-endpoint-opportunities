@@ -1,7 +1,7 @@
 #!/bin/bash
 source env.sh
 
-template_file=../gateway_endpoint.yaml
+template_file=../gateway-endpoint.yaml
 endpoint_service_name=s3
 stack_name="vpc-endpoint-${endpoint_service_name}"
 

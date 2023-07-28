@@ -1,5 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "Creates a VPC Flow log for the VPC using CloudWatch Logs destination"
+Metadata:
+  License: 
+     Description: | 
+        Usage is permitted under Apache 2.0 license
+        https://github.com/awslabs/aws-cloudformation-templates/blob/master/LICENSE.txt
 Parameters:
   VPCID:
     Type: String

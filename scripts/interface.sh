@@ -1,7 +1,7 @@
 #!/bin/bash
 source env.sh
 
-template_file=../interface_endpoint_example.yaml
+template_file=../interface-endpoint.yaml
 endpoint_service_name=ssm
 stack_name="vpc-endpoint-${endpoint_service_name}"
 

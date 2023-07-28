@@ -1,5 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "Creates Route 53 Resolver query configuration for an existing VPC and lambda function to query CloudWatch Logs Insight"
+Metadata:
+  License: 
+     Description: | 
+        Usage is permitted under Apache 2.0 license
+        https://github.com/awslabs/aws-cloudformation-templates/blob/master/LICENSE.txt
 Parameters:
   VPCID:
     Description: The ID an existing VPC

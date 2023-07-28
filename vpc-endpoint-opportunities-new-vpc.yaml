@@ -1,5 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "Creates a VPC with Managed NAT, 2 Public and 2 Private Subnets. Also creates the finding VPC Endpoint opportunities solution"
+Metadata:
+  License: 
+     Description: | 
+        Usage is permitted under Apache 2.0 license
+        https://github.com/awslabs/aws-cloudformation-templates/blob/master/LICENSE.txt
 Parameters:
   VPCName:
     Description: The name of the VPC being created.
