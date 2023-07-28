@@ -602,8 +602,7 @@ Resources:
                 Action: 
                   - 'ec2:DescribeVpcEndpoints'
                   - 'ec2:DescribeVpcEndpointServices'
-                Resource:
-                  - !GetAtt Route53QueryLogGroup.Arn
+                Resource: '*'
 
 Outputs:
 
