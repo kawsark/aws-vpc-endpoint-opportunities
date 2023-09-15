@@ -192,21 +192,17 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: read-log-groups
+        - PolicyName: query-log-groups
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: queryFlowLogs
+              - Sid: queryLogs
                 Effect: Allow
                 Action: 
-                  - 'logs:*'
+                  - 'logs:StartQuery'
+                  - 'logs:GetQueryResults'
                 Resource:
                   - !GetAtt Route53QueryLogGroup.Arn
-              - Sid: getQueryResults
-                Effect: Allow
-                Action: 
-                  - 'logs:GetQueryResults'
-                Resource: '*'
         - PolicyName: describe-vpc-endpoints
           PolicyDocument:
             Version: "2012-10-17"

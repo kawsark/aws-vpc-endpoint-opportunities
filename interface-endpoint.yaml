@@ -42,7 +42,18 @@ Resources:
       FromPort: 0
       ToPort: 65535
       GroupId: !Ref VPCEndpointSecurityGroup
-      IpProtocol: -1
+      IpProtocol: tcp
+
+  # Alllow all outbound access to Interface VPC Endpoint
+  EgressAllowAll:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      CidrIp: "0.0.0.0/0"
+      Description: 'Allow-outbound-access'
+      FromPort: 0
+      ToPort: 65535
+      GroupId: !Ref VPCEndpointSecurityGroup
+      IpProtocol: tcp
 
 Outputs:
   VPCEndpoint:

@@ -130,7 +130,7 @@ Resources:
           - "SubnetConfig"
           - "Public0"
           - "CIDR"
-      MapPublicIpOnLaunch: "true"
+      MapPublicIpOnLaunch: "false"
       Tags:
         -
           Key: "Application"
@@ -159,7 +159,7 @@ Resources:
           - "SubnetConfig"
           - "Public1"
           - "CIDR"
-      MapPublicIpOnLaunch: "true"
+      MapPublicIpOnLaunch: "false"
       Tags:
         -
           Key: "Application"
@@ -321,7 +321,7 @@ Resources:
     Properties:
       NetworkAclId: !Ref PublicNetworkAcl
       RuleNumber: "100"
-      Protocol: "-1"
+      Protocol: "6"
       RuleAction: "allow"
       Egress: "false"
       CidrBlock: "0.0.0.0/0"
@@ -334,7 +334,7 @@ Resources:
     Properties:
       NetworkAclId: !Ref PublicNetworkAcl
       RuleNumber: "100"
-      Protocol: "-1"
+      Protocol: "6"
       RuleAction: "allow"
       Egress: "true"
       CidrBlock: "0.0.0.0/0"
@@ -515,6 +515,7 @@ Resources:
       Handler: index.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
+#      ReservedConcurrentExecutions: 0
       Code:
         ZipFile: |
           import json
@@ -643,8 +644,6 @@ Resources:
               # return the full response dict
               return route53_query_name_resolutions
 
-    
-
       Environment:
         Variables:
           VPC_ID: !Ref VPC
@@ -664,21 +663,17 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: read-log-groups
+        - PolicyName: query-log-groups
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: queryFlowLogs
+              - Sid: queryLogs
                 Effect: Allow
                 Action: 
-                  - 'logs:*'
+                  - 'logs:StartQuery'
+                  - 'logs:GetQueryResults'
                 Resource:
                   - !GetAtt Route53QueryLogGroup.Arn
-              - Sid: getQueryResults
-                Effect: Allow
-                Action: 
-                  - 'logs:GetQueryResults'
-                Resource: '*'
         - PolicyName: describe-vpc-endpoints
           PolicyDocument:
             Version: "2012-10-17"
